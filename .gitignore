@@ -1,0 +1,48 @@
+# R-specific files
+.Rhistory
+.RData
+.RDataTmp
+.Rproj.user/
+*.Rproj
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+
+# Dependencies
+renv/library/
+.renv
+
+# Output/temporary files
+output/*
+!output/.gitkeep
+temp/
+tmp/
+
+# Node modules (if using R with Node)
+node_modules/
+
+# Python venv (if mixed environment)
+venv/
+env/
+
+# Package cache
+*.tar.gz
+*.zip
+
+# Build artifacts
+*.o
+*.so
+*.dll
+*.dylib
