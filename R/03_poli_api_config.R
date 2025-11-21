@@ -15,7 +15,7 @@ if (is.null(getOption("repos"))) {
   options(repos = c(CRAN = "https://cran.r-project.org/"))
 }
 
-required_packages <- c("httr", "jsonlite")
+required_packages <- c("httr", "jsonlite", "tibble")
 
 for (pkg in required_packages) {
   if (!require(pkg, character.only = TRUE)) {
@@ -45,7 +45,7 @@ POLI_ENDPOINTS <- list(
   virus = "virus",
   case = "case",
   human_specimen = "humanspecimen",
-  env_sample = "envsample",
+  env_sample = "EnvSample",
   activity = "activity",
   sub_activity = "subactivity",
   indicators = "indicators"
@@ -58,11 +58,11 @@ cat("✓ API credentials configured\n")
 # ============================================================================
 # Function: Create API headers
 # ============================================================================
-poli_get_headers <- function(auth_type = "bearer") {
-  if (auth_type == "bearer") {
+poli_get_headers <- function(auth_type = "token") {
+  if (auth_type == "token") {
     return(httr::add_headers(
-      Authorization = paste("Bearer", POLI_API_KEY),
-      'Content-Type' = 'application/json'
+      `authorization-token` = POLI_API_KEY,
+      `Content-Type` = 'application/json'
     ))
   }
   return(httr::add_headers('Content-Type' = 'application/json'))
@@ -118,6 +118,9 @@ poli_request <- function(endpoint, method = "GET", params = NULL, body = NULL, v
   
   if(verbose) cat(sprintf("Request: %s %s\n", method, endpoint))
   
+  # Disable SSL verification (required for WHO POLIS API)
+  httr::set_config(httr::config(ssl_verifypeer = 0L))
+  
   tryCatch({
     if (method == "GET") {
       response <- httr::GET(
@@ -141,9 +144,10 @@ poli_request <- function(endpoint, method = "GET", params = NULL, body = NULL, v
     
     if(verbose) cat(sprintf("Status: %d\n", status))
     
-    # Try to parse response
+    # Try to parse response using rawToChar for proper encoding
     if (status == 200) {
-      content_text <- httr::content(response, as = "text")
+      # Use rawToChar to properly handle the response content
+      content_text <- rawToChar(response$content)
       data <- tryCatch(
         jsonlite::fromJSON(content_text),
         error = function(e) content_text
@@ -156,7 +160,10 @@ poli_request <- function(endpoint, method = "GET", params = NULL, body = NULL, v
         timestamp = Sys.time()
       ))
     } else {
-      error_text <- httr::content(response, as = "text")
+      error_text <- tryCatch(
+        rawToChar(response$content),
+        error = function(e) httr::content(response, as = "text")
+      )
       if(verbose && nchar(error_text) < 200) cat(sprintf("Error: %s\n", error_text))
       
       return(list(
@@ -217,6 +224,85 @@ poli_save_data <- function(response, filename, format = "both") {
 }
 
 # ============================================================================
+# Function: Fetch table endpoint and return tibble with specified rows
+# ============================================================================
+poli_fetch_table <- function(endpoint, n_rows = 100, verbose = TRUE) {
+  # Note: Endpoint names are case-sensitive for POLIS API V2
+  # Valid endpoints include: EnvSample, virus, case, humanspecimen, 
+  #                          activity, subactivity, indicators
+  # For now, we allow the user to specify the exact case
+  
+  if(verbose) {
+    cat(sprintf("\n=== Fetching %s endpoint ===\n", endpoint))
+    cat(sprintf("Requesting %d rows...\n", n_rows))
+  }
+  
+  # Set pagination parameters
+  # Take should be the number of rows requested
+  params <- list(
+    Skip = 0,
+    Take = n_rows
+  )
+  
+  # Make API request
+  response <- poli_request(endpoint, method = "GET", params = params, verbose = verbose)
+  
+  if (!response$success) {
+    cat(sprintf("✗ Failed to fetch %s endpoint\n", endpoint))
+    return(NULL)
+  }
+  
+  # Convert response to data frame/tibble
+  tryCatch({
+    data <- response$data
+    
+    # Handle nested list structure (if API returns a list with data field)
+    if (is.list(data) && !is.null(names(data))) {
+      # Look for common data fields
+      if (!is.null(data$value)) {
+        data <- data$value
+      } else if (!is.null(data$data)) {
+        data <- data$data
+      }
+    }
+    
+    # Convert to data frame if it's a list of records
+    if (is.list(data) && length(data) > 0 && is.list(data[[1]])) {
+      df <- data.frame(t(sapply(data, function(x) {
+        # Flatten nested lists to NA or character representation
+        vapply(x, function(y) {
+          if (is.null(y)) NA_character_
+          else if (is.list(y)) paste(names(y), collapse=",")
+          else as.character(y)
+        }, character(1))
+      })), stringsAsFactors = FALSE)
+    } else if (is.data.frame(data)) {
+      df <- data
+    } else {
+      cat("✗ Could not convert response to data frame\n")
+      return(NULL)
+    }
+    
+    # Limit to requested number of rows
+    df <- df[1:min(n_rows, nrow(df)), ]
+    
+    # Convert to tibble
+    tbl <- tibble::as_tibble(df)
+    
+    if(verbose) {
+      cat(sprintf("✓ Successfully fetched %d rows, %d columns\n", nrow(tbl), ncol(tbl)))
+      cat(sprintf("Columns: %s\n", paste(names(tbl), collapse=", ")))
+    }
+    
+    return(tbl)
+  }, error = function(e) {
+    cat(sprintf("✗ Error converting data to tibble: %s\n", e$message))
+    return(NULL)
+  })
+}
+
+
+# ============================================================================
 # Display Information
 # ============================================================================
 cat("\n========================================\n")
@@ -232,17 +318,16 @@ for(ep_name in names(POLI_ENDPOINTS)) {
 }
 
 cat("\nAvailable functions:\n")
-cat("  poli_test_connection()         - Test API connectivity\n")
-cat("  poli_request(endpoint, method) - Make API request\n")
-cat("  poli_save_data(response, file) - Save response to CSV/JSON\n")
+cat("  poli_test_connection()                  - Test API connectivity\n")
+cat("  poli_request(endpoint, method)          - Make API request\n")
+cat("  poli_save_data(response, file)          - Save response to CSV/JSON\n")
+cat("  poli_fetch_table(endpoint, n_rows)      - Fetch table as tibble\n")
 
 cat("\nUsage Example:\n")
 cat("  source('R/03_poli_api_config.R')\n")
-cat("  poli_test_connection()         # Test connection\n")
-cat("  result <- poli_request('envsample')\n")
-cat("  if(result$success) {\n")
-cat("    poli_save_data(result, 'envsample.csv')\n")
-cat("  }\n")
+cat("  poli_test_connection()                  # Test connection\n")
+cat("  env_data <- poli_fetch_table('envsample', n_rows = 100)\n")
+cat("  head(env_data)                          # View first 6 rows\n")
 
 cat("\nWHO POLIS Resources:\n")
 cat("  - Main: https://extranet.who.int/polis/\n")
