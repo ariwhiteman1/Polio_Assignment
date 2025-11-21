@@ -38,20 +38,21 @@ cat("\n=== API Configuration ===\n")
 # API credentials
 POLI_API_KEY <- "BRfIZj%2fI9B3MwdWKtLzG%2bkpEHdJA31u5cB2TjsCFZDdMZqsUPNrgiKBhPv3CeYRg4wrJKTv6MP9UidsGE9iIDmaOs%2bGZU3CP5ZjZnaBNbS0uiHWWhK8Now3%2bAYfjxkuU1fLiC2ypS6m8Jy1vxWZlskiPyk6S9IV2ZFOFYkKXMIw%3d"
 POLI_BASE_URL <- "https://extranet.who.int/polis/"
-POLI_API_BASE <- "https://extranet.who.int/polis/api2/"
+POLI_API_V2 <- "https://extranet.who.int/polis/api/v2/"
 
-# Possible API endpoints (to be confirmed with WHO)
+# API endpoints based on POLIS API V2 documentation
 POLI_ENDPOINTS <- list(
-  cases = "cases",
-  countries = "countries",
-  outbreaks = "outbreaks",
-  reports = "reports",
-  diseasecases = "disease/1/cases",
-  poliocases = "disease/polio/cases"
+  virus = "virus",
+  case = "case",
+  human_specimen = "humanspecimen",
+  env_sample = "envsample",
+  activity = "activity",
+  sub_activity = "subactivity",
+  indicators = "indicators"
 )
 
 cat(sprintf("Base URL: %s\n", POLI_BASE_URL))
-cat(sprintf("API Base: %s\n", POLI_API_BASE))
+cat(sprintf("API V2 Base: %s\n", POLI_API_V2))
 cat("✓ API credentials configured\n")
 
 # ============================================================================
@@ -78,9 +79,9 @@ poli_test_connection <- function(verbose = TRUE) {
     r1 <- httr::GET(POLI_BASE_URL, httr::timeout(10))
     base_status <- httr::status_code(r1)
     
-    # Test API endpoint
+    # Test API V2 endpoint
     r2 <- httr::GET(
-      POLI_API_BASE, 
+      POLI_API_V2, 
       poli_get_headers(),
       httr::timeout(10)
     )
@@ -88,7 +89,7 @@ poli_test_connection <- function(verbose = TRUE) {
     
     if(verbose) {
       cat(sprintf("  Base POLIS URL: %d\n", base_status))
-      cat(sprintf("  API Endpoint: %d\n", api_status))
+      cat(sprintf("  API V2 Endpoint: %d\n", api_status))
     }
     
     return(list(
@@ -113,7 +114,7 @@ poli_test_connection <- function(verbose = TRUE) {
 # Function: Make authenticated API request
 # ============================================================================
 poli_request <- function(endpoint, method = "GET", params = NULL, body = NULL, verbose = TRUE) {
-  url <- paste0(POLI_API_BASE, endpoint)
+  url <- paste0(POLI_API_V2, endpoint)
   
   if(verbose) cat(sprintf("Request: %s %s\n", method, endpoint))
   
@@ -222,10 +223,13 @@ cat("\n========================================\n")
 cat("   POLI API Configuration Complete\n")
 cat("========================================\n")
 
-cat("\n⚠ NOTE:\n")
-cat("The WHO POLIS API endpoints may differ from expected.\n")
-cat("The current endpoints are: 404 (not found)\n")
-cat("Contact WHO for correct endpoint documentation.\n")
+cat("\n✓ Using POLIS API V2 endpoint structure\n")
+cat("API Base URL: https://extranet.who.int/polis/api/v2/\n")
+
+cat("\nAvailable endpoints:\n")
+for(ep_name in names(POLI_ENDPOINTS)) {
+  cat(sprintf("  - %s: %s\n", ep_name, POLI_ENDPOINTS[[ep_name]]))
+}
 
 cat("\nAvailable functions:\n")
 cat("  poli_test_connection()         - Test API connectivity\n")
@@ -235,19 +239,20 @@ cat("  poli_save_data(response, file) - Save response to CSV/JSON\n")
 cat("\nUsage Example:\n")
 cat("  source('R/03_poli_api_config.R')\n")
 cat("  poli_test_connection()         # Test connection\n")
-cat("  result <- poli_request('cases')\n")
+cat("  result <- poli_request('envsample')\n")
 cat("  if(result$success) {\n")
-cat("    poli_save_data(result, 'cases.csv')\n")
+cat("    poli_save_data(result, 'envsample.csv')\n")
 cat("  }\n")
 
 cat("\nWHO POLIS Resources:\n")
 cat("  - Main: https://extranet.who.int/polis/\n")
+cat("  - API Documentation available in POLIS Help\n")
 cat("  - API Key: Configured in this script\n")
 
 cat("\nTroubleshooting:\n")
 cat("  1. Verify internet connection\n")
 cat("  2. Check API key validity\n")
-cat("  3. Confirm correct endpoint paths\n")
+cat("  3. Confirm endpoint names match POLIS API V2\n")
 cat("  4. Contact WHO support for API documentation\n")
 
 cat("\n========================================\n")
