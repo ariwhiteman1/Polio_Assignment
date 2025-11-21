@@ -7,7 +7,7 @@
 # ============================================================================
 
 # Install and load required packages
-required_packages <- c("httr", "jsonlite", "dplyr")
+required_packages <- c("httr", "jsonlite", "dplyr", "tibble")
 
 for (pkg in required_packages) {
   if (!require(pkg, character.only = TRUE)) {
@@ -144,6 +144,69 @@ poli_query <- function(endpoint, params = NULL) {
   })
 }
 
+#' Get Data from POLI API Table Endpoint
+#' 
+#' @description Retrieve data from any POLI API table endpoint and return as a tibble
+#' 
+#' @param endpoint Character - API endpoint (e.g., "/polio/cases", "/polio/sir")
+#' @param n_rows Numeric - Number of rows to retrieve (default: 100)
+#' @param filters List - Optional query filters to apply
+#' 
+#' @return Tibble - Data from the API endpoint with specified number of rows
+#' 
+#' @examples
+#' \dontrun{
+#'   # Get 50 rows from cases endpoint
+#'   cases <- poli_get_table("/polio/cases", n_rows = 50)
+#'   
+#'   # Get 100 rows from SIR endpoint
+#'   sir <- poli_get_table("/polio/sir", n_rows = 100)
+#'   
+#'   # Get cases with country filter
+#'   usa_cases <- poli_get_table("/polio/cases", n_rows = 50, 
+#'                               filters = list(country = "USA"))
+#' }
+#'
+poli_get_table <- function(endpoint, n_rows = 100, filters = NULL) {
+  cat(sprintf("Retrieving %d rows from %s...\n", n_rows, endpoint))
+  
+  # Create query parameters
+  params <- list(limit = n_rows)
+  
+  # Add any additional filters
+  if (!is.null(filters)) {
+    params <- c(params, filters)
+  }
+  
+  # Make API query
+  data <- poli_query(endpoint, params = params)
+  
+  if (!is.null(data)) {
+    # Handle different response structures
+    if (is.list(data) && !is.null(data$data)) {
+      # If response has nested 'data' field
+      df <- as.data.frame(data$data)
+    } else if (is.list(data) && length(data) > 0) {
+      # If response is directly a list of records
+      df <- as.data.frame(data)
+    } else {
+      cat("✗ Unexpected data structure returned from API\n")
+      return(NULL)
+    }
+    
+    # Convert to tibble
+    tbl <- as_tibble(df)
+    
+    # Display summary
+    cat(sprintf("✓ Retrieved %d rows and %d columns\n", nrow(tbl), ncol(tbl)))
+    cat(sprintf("Columns: %s\n", paste(names(tbl), collapse = ", ")))
+    
+    return(tbl)
+  }
+  
+  return(NULL)
+}
+
 #' Get Polio Cases
 #' 
 #' @description Retrieve polio case data from POLI API
@@ -221,15 +284,16 @@ cat("\n========================================\n")
 cat("    POLI API Helper Functions Loaded\n")
 cat("========================================\n")
 cat("\nAvailable functions:\n")
-cat("  poli_connect()           - Test connection to POLI API\n")
-cat("  poli_status()            - Check API status\n")
-cat("  poli_query(endpoint)     - Make custom API query\n")
-cat("  poli_get_cases()         - Get polio cases\n")
-cat("  poli_get_sir()           - Get SIR data\n")
-cat("  poli_save_data()         - Save data to CSV\n")
+cat("  poli_connect()              - Test connection to POLI API\n")
+cat("  poli_status()               - Check API status\n")
+cat("  poli_query(endpoint)        - Make custom API query\n")
+cat("  poli_get_table()            - Get data from any table endpoint as tibble\n")
+cat("  poli_get_cases()            - Get polio cases\n")
+cat("  poli_get_sir()              - Get SIR data\n")
+cat("  poli_save_data()            - Save data to CSV\n")
 cat("\nExample usage:\n")
-cat("  poli_connect()                    # Test connection\n")
-cat("  cases <- poli_get_cases()         # Get all cases\n")
-cat("  sir <- poli_get_sir()             # Get SIR data\n")
+cat("  poli_connect()                                # Test connection\n")
+cat("  cases <- poli_get_table('/polio/cases', n_rows = 50)\n")
+cat("  sir <- poli_get_table('/polio/sir', n_rows = 100)\n")
 cat("  poli_save_data(cases, 'cases.csv')\n")
 cat("========================================\n\n")
